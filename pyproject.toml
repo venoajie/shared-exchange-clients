@@ -2,13 +2,13 @@
 
 [project]
 name = "shared-exchange-clients"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
     "aiohttp==3.12.7",
     "loguru==0.7.2",
     "orjson==3.10.18",
     "tomli==2.0.1",
-    "shared-config @ git+https://github.com/venoajie/shared-config.git@v0.1.3"
+    "shared-config @ git+https://github.com/venoajie/shared-config.git@v0.1.4"
 
 ]
 
