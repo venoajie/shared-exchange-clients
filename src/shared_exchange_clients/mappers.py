@@ -21,6 +21,7 @@ def get_canonical_market_type(
     Deribit API v_new fields:
         kind: "future", "option", "spot", "future_combo", "option_combo"
         instrument_type: "linear", "reversed" (for futures)
+
     """
     if exchange_name == "deribit":
 
@@ -47,13 +48,13 @@ def get_canonical_market_type(
                 else:
                     return MarketType.LINEAR_FUTURES
 
-            if "option" in kind:                
+            elif "option" in kind:                
                 if "combo" in kind:
                     return MarketType.LINEAR_OPTIONS_COMBO
                 else:
                     return MarketType.LINEAR_OPTIONS
 
-            if kind == "spot":
+            elif kind == "spot":
                 return MarketType.SPOT
 
     elif exchange_name == "binance":
