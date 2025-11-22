@@ -7,11 +7,12 @@ import asyncio
 from datetime import datetime, timezone
 
 from shared_exchange_clients.public.base_client import AbstractJanitorClient
+from shared_exchange_clients.mappers import get_canonical_market_type
 
 
 def _transform_binance_instrument(
     raw_instrument: Dict[str, Any],
-    market_type: str,
+    market_type_hint: str,
 ) -> Dict[str, Any]:
     """Transforms a single raw Binance instrument from any market into our canonical format."""
 
@@ -22,6 +23,12 @@ def _transform_binance_instrument(
         return None
 
     contract_type = raw_instrument.get("contractType")
+    
+    canonical_market_type = get_canonical_market_type(
+        "binance", raw_instrument, source_hint=market_type_hint
+    )
+    market_type = canonical_market_type.value
+    
 
     if market_type == "spot":
         instrument_kind = "spot"
