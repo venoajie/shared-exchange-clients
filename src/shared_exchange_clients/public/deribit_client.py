@@ -8,6 +8,7 @@ import asyncio
 
 from shared_exchange_clients.public.base_client import AbstractJanitorClient
 from shared_config.config import settings
+from shared_exchange_clients.mappers import get_canonical_market_type
 
 
 def _transform_deribit_instrument(raw_instrument: Dict[str, Any]) -> Dict[str, Any]:
@@ -16,24 +17,22 @@ def _transform_deribit_instrument(raw_instrument: Dict[str, Any]) -> Dict[str, A
     kind = raw_instrument.get("kind")
 
     if kind == "future":
-        market_type = "inverse_futures"
         instrument_kind = "perpetual" if "PERPETUAL" in instrument_name else "future"
     elif kind == "option":
-        market_type = "inverse_options"
         instrument_kind = "option"
     else:
-        market_type = "unknown"
         instrument_kind = "unknown"
 
     exp_ts_ms = raw_instrument.get("expiration_timestamp")
     expiration_timestamp = (
         datetime.fromtimestamp(exp_ts_ms / 1000, tz=timezone.utc) if exp_ts_ms else None
     )
+    canonical_market_type = get_canonical_market_type("deribit", raw_instrument)
 
     return {
         "exchange": "deribit",
         "instrument_name": instrument_name,
-        "market_type": market_type,
+        "market_type": canonical_market_type.value,
         "instrument_kind": instrument_kind,
         "base_asset": raw_instrument.get("base_currency"),
         "quote_asset": raw_instrument.get("quote_currency"),
