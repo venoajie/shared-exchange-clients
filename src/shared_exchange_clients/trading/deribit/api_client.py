@@ -20,7 +20,6 @@ class DeribitApiClient:
         client_id: str,
         client_secret: str,
     ):
-
         self.client_id = client_id
         self.client_secret = client_secret
         self._session: Optional[aiohttp.ClientSession] = None

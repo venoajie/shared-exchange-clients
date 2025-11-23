@@ -52,4 +52,3 @@ class AbstractJanitorClient(ABC):
         market data analysis, not private account auditing.
         """
         pass
-    

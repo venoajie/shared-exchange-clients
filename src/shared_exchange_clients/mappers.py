@@ -1,13 +1,11 @@
 # src\shared_exchange_clients\mappers.py
 
 from typing import Dict, Any
-from loguru import logger as log # Make sure loguru is imported
-from trading_engine_core.models.enums import MarketType
+from trading_engine_core.enums import MarketType
+
 
 def get_canonical_market_type(
-    exchange_name: str,
-    raw_instrument: Dict[str, Any],
-    source_hint: str = None
+    exchange_name: str, raw_instrument: Dict[str, Any], source_hint: str = None
 ) -> MarketType:
     """
     Translates raw exchange data into the canonical MarketType enum.
@@ -24,11 +22,10 @@ def get_canonical_market_type(
 
     """
     if exchange_name == "deribit":
-
         kind = raw_instrument.get("kind")
         instrument_type = raw_instrument.get("instrument_type")
-           
-        if instrument_type == "reversed": # "reversed" is Deribit's term for inverse
+
+        if instrument_type == "reversed":  # "reversed" is Deribit's term for inverse
             if "future" in kind:
                 if "combo" in kind:
                     return MarketType.INVERSE_FUTURES_COMBO
@@ -41,14 +38,14 @@ def get_canonical_market_type(
                 else:
                     return MarketType.INVERSE_OPTIONS
 
-        elif instrument_type == "linear": 
+        elif instrument_type == "linear":
             if "future" in kind:
                 if "combo" in kind:
                     return MarketType.LINEAR_FUTURES_COMBO
                 else:
                     return MarketType.LINEAR_FUTURES
 
-            elif "option" in kind:                
+            elif "option" in kind:
                 if "combo" in kind:
                     return MarketType.LINEAR_OPTIONS_COMBO
                 else:

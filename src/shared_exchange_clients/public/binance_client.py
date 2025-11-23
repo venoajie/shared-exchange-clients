@@ -23,12 +23,11 @@ def _transform_binance_instrument(
         return None
 
     contract_type = raw_instrument.get("contractType")
-    
+
     canonical_market_type = get_canonical_market_type(
         "binance", raw_instrument, source_hint=market_type_hint
     )
     market_type = canonical_market_type.value
-    
 
     if market_type == "spot":
         instrument_kind = "spot"
@@ -104,7 +103,6 @@ class BinanceJanitorClient(AbstractJanitorClient):
         currency: str = None,
         kind: str = None,
     ) -> List[Dict[str, Any]]:
-
         markets_to_query = {
             "spot": "https://api.binance.com/api/v3/exchangeInfo",
             "linear_futures": "https://fapi.binance.com/fapi/v1/exchangeInfo",
@@ -251,7 +249,6 @@ class BinanceJanitorClient(AbstractJanitorClient):
                         break
 
                     for trade in trades:
-
                         # Add market_type fallback
                         trade_market_type = market_type or "spot"
                         all_trades.append(
