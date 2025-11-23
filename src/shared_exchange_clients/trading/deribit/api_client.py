@@ -1,5 +1,7 @@
+
 # src\shared_exchange_clients\trading\deribit\api_client.py
 
+import asyncio
 import orjson
 from loguru import logger as log
 from typing import Dict, Any, Optional
@@ -13,6 +15,7 @@ class DeribitApiClient:
     """
     A production-grade API client for interacting with the Deribit v2 API.
     Manages an aiohttp session and handles JSON-RPC 2.0 requests with authentication.
+    [MODIFIED] Now includes automatic, thread-safe token refresh logic.
     """
 
     def __init__(
@@ -25,6 +28,8 @@ class DeribitApiClient:
         self._session: Optional[aiohttp.ClientSession] = None
         self._base_url = "https://www.deribit.com/api/v2"
         self._access_token: Optional[str] = None
+        # [NEW] Lock to prevent race conditions during token refresh.
+        self._auth_lock = asyncio.Lock()
         log.info("Deribit API client initialized for production use.")
 
     async def connect(self):
@@ -72,12 +77,13 @@ class DeribitApiClient:
             log.critical(f"HTTP error during authentication: {e}")
             self._access_token = None
 
-    async def _make_request(
-        self,
-        method: str,
-        params: Dict[str, Any],
+    async def _perform_request(
+        self, method: str, params: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """A generic, internal method for making authenticated JSON-RPC requests."""
+        """
+        [NEW] Internal helper to execute a single API request. This method is called
+        by _make_request and contains the core post logic.
+        """
         if not method.startswith("public/") and not self._access_token:
             return {"success": False, "error": "Not authenticated"}
         if not self._session or self._session.closed:
@@ -104,10 +110,8 @@ class DeribitApiClient:
                         log.error(
                             f"Deribit API Error for method {method}: HTTP {response.status}, Body: {error_data}"
                         )
-                        return {
-                            "success": False,
-                            "error": error_data.get("error", str(error_data)),
-                        }
+                        # Return the full error structure for parsing
+                        return {"success": False, "error": error_data.get("error")}
                     except Exception:
                         error_text = await response.text()
                         log.error(
@@ -132,6 +136,46 @@ class DeribitApiClient:
                 exc_info=True,
             )
             return {"success": False, "error": "Unexpected error"}
+
+    async def _make_request(
+        self,
+        method: str,
+        params: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        [MODIFIED] A generic, internal method for making authenticated JSON-RPC requests.
+        It now handles automatic token refresh on expiration.
+        """
+        # First attempt
+        response = await self._perform_request(method, params)
+
+        # Check for the specific 'invalid_token' error code
+        is_token_error = (
+            not response["success"]
+            and isinstance(response.get("error"), dict)
+            and response["error"].get("code") == 13009
+        )
+
+        if is_token_error:
+            log.warning(
+                f"Access token expired for {method}. Attempting to re-authenticate and retry."
+            )
+            # Acquire lock to ensure only one coroutine refreshes the token.
+            async with self._auth_lock:
+                # Re-authenticate to get a new token.
+                await self.login()
+
+            # If login was successful, a new token is now stored in self._access_token.
+            # Retry the request exactly once.
+            if self._access_token:
+                log.info(f"Retrying request for {method} with new token.")
+                response = await self._perform_request(method, params)
+            else:
+                log.error(f"Failed to re-authenticate. Aborting retry for {method}.")
+                # Return the original token error if re-login fails
+                return response
+
+        return response
 
     async def get_instruments(
         self,
@@ -158,9 +202,6 @@ class DeribitApiClient:
         resolution: str,
     ) -> Dict[str, Any]:
         """Fetches OHLC data from the TradingView-compatible endpoint."""
-        # log.info(
-        #    f"[API CALL] Fetching chart data for {instrument_name} ({resolution}) from {start_timestamp} to {end_timestamp}"
-        # )
         params = {
             "instrument_name": instrument_name,
             "start_timestamp": start_timestamp,
@@ -198,8 +239,7 @@ class DeribitApiClient:
         log.info(
             f"[API CALL] Attempting to create order with client_id: {client_order_id}"
         )
-        # REMEDIATION: The 'side' key is used to construct the endpoint but is not part of the API payload.
-        # It must be removed from the params sent to the exchange.
+
         side = params.get("side")
         if not side:
             return {
@@ -207,13 +247,14 @@ class DeribitApiClient:
                 "error": "Missing 'side' parameter for create_order",
             }
 
-        # Create a copy of the params to avoid modifying the original dict.
         payload_params = params.copy()
-        # Remove the 'side' key as it's not part of the Deribit API contract for this endpoint.
         payload_params.pop("side", None)
+        payload_params.pop("cycle_id", None) # Do not send internal IDs to the exchange
 
+        # Deribit uses buy/sell for the method name, not just a parameter
         endpoint = f"private/{side}"
         response = await self._make_request(endpoint, payload_params)
+
         if response["success"]:
             log.success(
                 f"[API RESPONSE] Successfully processed create for order: {client_order_id}."
@@ -227,14 +268,11 @@ class DeribitApiClient:
     async def create_oto_order(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Sends a request to create a paired OTO (One-Triggers-Other) order.
-        The `params` are expected to contain the main order details and an `otoco_config`.
         """
         client_order_id = params.get("label")
         log.info(
             f"[API CALL] Attempting to create OTO order with client_id: {client_order_id}"
         )
-        # REMEDIATION: The 'side' key is used to construct the endpoint but is not part of the API payload.
-        # It must be removed from the params sent to the exchange.
         side = params.get("side")
         if not side:
             return {
@@ -242,10 +280,9 @@ class DeribitApiClient:
                 "error": "Missing 'side' parameter for create_oto_order",
             }
 
-        # Create a copy of the params to avoid modifying the original dict.
         payload_params = params.copy()
-        # Remove the 'side' key as it's not part of the Deribit API contract for this endpoint.
         payload_params.pop("side", None)
+        payload_params.pop("cycle_id", None) # Do not send internal IDs to the exchange
 
         endpoint = f"private/{side}"
         response = await self._make_request(endpoint, payload_params)
