@@ -153,6 +153,13 @@ class DeribitApiClient:
         )
 
     @_ensure_authenticated
+    async def get_subaccounts_details(self, currency: str) -> Dict[str, Any]:
+        """Fetches detailed subaccount information."""
+        log.info(f"[API CALL] Fetching subaccount details for currency: {currency}")
+        params = {"currency": currency, "with_open_orders": True}
+        return await self._perform_request(ApiMethods.GET_SUBACCOUNTS_DETAILS, params)
+    
+    @_ensure_authenticated
     async def cancel_order(self, order_id: str) -> Dict[str, Any]:
         log.info(f"[API CALL] Attempting to cancel order: {order_id}")
         return await self._perform_request(ApiMethods.CANCEL_ORDER, {"order_id": order_id})
